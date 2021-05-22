@@ -60,6 +60,11 @@ type Config struct {
 	// ClientHello's ServerName field is empty.
 	DefaultServerName string
 
+	// DefaultCommonName is used as an extra "valid domain" for
+	// certificates so that >63 character domains can be supported
+	// automatically.
+	DefaultCommonName string
+
 	// The state needed to operate on-demand TLS;
 	// if non-nil, on-demand TLS is enabled and
 	// certificate operations are deferred to
@@ -195,6 +200,9 @@ func newWithCache(certCache *Cache, cfg Config) *Config {
 	}
 	if cfg.DefaultServerName == "" {
 		cfg.DefaultServerName = Default.DefaultServerName
+	}
+	if cfg.DefaultCommonName == "" {
+		cfg.DefaultCommonName = Default.DefaultCommonName
 	}
 	if cfg.OnDemand == nil {
 		cfg.OnDemand = Default.OnDemand
@@ -476,7 +484,11 @@ func (cfg *Config) obtainCert(ctx context.Context, name string, interactive bool
 			return err
 		}
 
-		csr, err := cfg.generateCSR(privateKey, []string{name})
+		requestedCertificateNames := []string{name}
+		if cfg.DefaultCommonName != "" {
+			requestedCertificateNames = append(requestedCertificateNames, cfg.DefaultCommonName)
+		}
+		csr, err := cfg.generateCSR(privateKey, requestedCertificateNames)
 		if err != nil {
 			return err
 		}
@@ -486,7 +498,7 @@ func (cfg *Config) obtainCert(ctx context.Context, name string, interactive bool
 		var issuerUsed Issuer
 		for _, issuer := range cfg.Issuers {
 			if prechecker, ok := issuer.(PreChecker); ok {
-				err = prechecker.PreCheck(ctx, []string{name}, interactive)
+				err = prechecker.PreCheck(ctx, requestedCertificateNames, interactive)
 				if err != nil {
 					continue
 				}
